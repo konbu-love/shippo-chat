@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<title>尻尾チャット(仮)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f3ecdc;
+    --paper-deep: #e9dfc9;
+    --ink: #2a2420;
+    --ink-soft: #7a6c5c;
+    --line: #cdbfa4;
+    --shu: #b5412b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Yuji Syuku", "Klee One", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  /* 上:縦2分割 */
+  #stage { flex: 1; min-height: 0; display: flex; }
+  #tailPane {
+    position: relative; flex: 0 0 38%;
+    background: var(--paper-deep);
+    border-right: 1px solid #cdbfa4;
+  }
+  #tail { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #gear {
+    position: absolute; top: 8px; left: 8px; z-index: 2;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid #cdbfa4; background: var(--paper); color: var(--ink-soft);
+    font-size: 20px; line-height: 1; cursor: pointer; font-family: inherit;
+  }
+  #chat {
+    flex: 1; min-width: 0; height: 100%;
+    writing-mode: vertical-rl; text-orientation: mixed;
+    overflow-x: auto; overflow-y: hidden;
+    padding: 18px 14px;
+    font-size: 21px; line-height: 1.9; letter-spacing: 0.06em;
+    overscroll-behavior: contain;
+  }
+  .msg { margin: 0 0 0 1.1em; max-height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { color: var(--ink-soft); padding-top: 2.2em; font-size: 0.86em; }
+  .msg.ai { color: var(--ink); }
+  .msg.ai::before { content: "〇"; color: var(--shu); font-size: 0.6em; margin-bottom: 0.5em; display: inline-block; }
+  .msg.wait { color: var(--ink-soft); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  /* 下:横書きの入力 */
+  #status {
+    display: none; padding: 6px 12px; font-size: 13px; color: var(--shu);
+    font-family: system-ui, sans-serif; background: var(--paper); border-top: 1px solid #cdbfa4;
+  }
+  #bar {
+    display: flex; gap: 8px; align-items: flex-end;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid #cdbfa4; background: var(--paper);
+  }
+  #input {
+    flex: 1; min-width: 0; resize: none; max-height: 96px;
+    padding: 10px 14px; border-radius: 20px; border: 1px solid #cdbfa4;
+    background: #fbf7ee; color: var(--ink);
+    font: 16px/1.4 system-ui, -apple-system, "Noto Sans JP", sans-serif;
+    outline: none;
+  }
+  #input:focus { border-color: var(--ink-soft); }
+  #send {
+    flex: 0 0 44px; height: 44px; border-radius: 50%; border: 0;
+    background: var(--ink); color: var(--paper); font-size: 20px; cursor: pointer;
+  }
+  #send:disabled { opacity: 0.35; }
+
+  /* 設定 */
+  #veil {
+    display: none; position: fixed; inset: 0; z-index: 10;
+    background: rgba(42, 36, 32, 0.45); align-items: flex-end; justify-content: center;
+  }
+  #veil.open { display: flex; }
+  #sheet {
+    width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto;
+    background: var(--paper); border-radius: 18px 18px 0 0; padding: 18px 18px 26px;
+    font: 15px/1.7 system-ui, -apple-system, "Noto Sans JP", sans-serif; color: var(--ink);
+  }
+  #sheet h2 { font: 20px "Yuji Syuku", serif; margin: 0 0 4px; }
+  #sheet h3 { font-size: 14px; margin: 18px 0 6px; color: var(--ink-soft); font-weight: 600; }
+  #sheet p, #sheet ol { margin: 4px 0; }
+  #sheet ol { padding-left: 1.4em; }
+  #sheet a { color: var(--shu); }
+  #sheet input[type=text], #sheet input[type=password] {
+    width: 100%; padding: 10px 12px; font-size: 16px; border-radius: 10px;
+    border: 1px solid #cdbfa4; background: #fbf7ee; color: var(--ink);
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .btn {
+    padding: 9px 14px; border-radius: 10px; border: 1px solid #cdbfa4;
+    background: #fbf7ee; color: var(--ink); font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .btn.main { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .note { font-size: 13px; color: var(--ink-soft); }
+  #brain { font-size: 13px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="tailPane">
+      <button id="gear" aria-label="設定">⚙</button>
+      <canvas id="tail"></canvas>
+    </div>
+    <div id="chat" aria-live="polite"></div>
+  </div>
+  <div id="status"></div>
+  <form id="bar">
+    <textarea id="input" rows="1" placeholder="話しかける" autocomplete="off"></textarea>
+    <button id="send" type="submit" aria-label="送信">↑</button>
+  </form>
+</div>
+
+<div id="veil">
+  <div id="sheet">
+    <h2>設定</h2>
+    <p id="brain"></p>
+
+    <h3>Gemini APIキー</h3>
+    <input id="key" type="password" placeholder="ここに貼り付け" autocomplete="off">
+    <div class="row">
+      <button class="btn main" id="saveKey" type="button">保存</button>
+      <button class="btn" id="delKey" type="button">キーを消す</button>
+    </div>
+    <p class="note">キーはこの端末のブラウザの中だけに保存され、作者には届きません。</p>
+
+    <h3>キーの取り方(無料)</h3>
+    <ol>
+      <li><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio のキー画面</a>を開く</li>
+      <li>Googleアカウントでログインする</li>
+      <li>「APIキーを作成」を押す</li>
+      <li>出てきた文字列をコピーして、上の欄に貼る</li>
+    </ol>
+    <p class="note">無料枠では、会話の内容がGoogleのサービス改善に使われることがあります。人に知られたくないことは書かないでください。</p>
+
+    <h3>モデル名</h3>
+    <input id="model" type="text" autocomplete="off">
+    <p class="note">ふつうは変えなくて大丈夫です。「モデルが見つからない」と出たときだけ、新しい名前に書き換えます。</p>
+
+    <h3>尻尾の柄</h3>
+    <div class="row" id="coatRow"></div>
+
+    <h3>尻尾の動きを試す</h3>
+    <div class="row" id="tryRow"></div>
+
+    <h3>会話</h3>
+    <div class="row">
+      <button class="btn" id="clear" type="button">会話を消す</button>
+      <button class="btn main" id="close" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- 保存(使えないときは黙ってメモリだけで動く) ---------- */
+  var mem = {};
+  function load(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return k in mem ? mem[k] : d; } }
+  function save(k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
+  function drop(k) { delete mem[k]; try { localStorage.removeItem(k); } catch (e) {} }
+
+  var DEFAULT_MODEL = "gemini-3.8-flash";
+  var GREETING = "こんにちは。何でもお話しください。";
+  var msgs = [];
+  try { msgs = JSON.parse(load("shippo.msgs", "[]")) || []; } catch (e) { msgs = []; }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var chat = $("chat"), input = $("input"), sendBtn = $("send"), statusEl = $("status");
+
+  /* ---------- 尻尾 ---------- */
+  var MOODS = {
+    calm:      { label: "平常",     amp: 0.00, freq: 2,  phase: 2.0, pow: 2.0, curl: 0.55, tip: 0.9, puff: 0, sharp: 0 },
+    happy:     { label: "うれしい", amp: 0.42, freq: 15, phase: 4.2, pow: 1.3, curl: 0.15, tip: 0.3, puff: 0, sharp: 0 },
+    surprised: { label: "驚き",     amp: 0.03, freq: 34, phase: 1.0, pow: 1.0, curl: 0.04, tip: 0.1, puff: 1, sharp: 0 },
+    annoyed:   { label: "イライラ", amp: 0.46, freq: 5,  phase: 1.3, pow: 0.9, curl: 0.25, tip: 0.3, puff: 0, sharp: 1 },
+    curious:   { label: "興味",     amp: 0.14, freq: 3.2, phase: 1.5, pow: 4.0, curl: 0.10, tip: 2.3, puff: 0, sharp: 0 },
+    sad:       { label: "しょんぼり", amp: 0.03, freq: 1.2, phase: 1.5, pow: 2.0, curl: 1.25, tip: 1.9, puff: 0, sharp: 0 },
+    relaxed:   { label: "くつろぎ", amp: 0.26, freq: 1.7, phase: 2.2, pow: 1.5, curl: 0.55, tip: 0.7, puff: 0, sharp: 0 },
+    thinking:  { label: "考え中",   amp: 0.20, freq: 6,  phase: 1.0, pow: 5.0, curl: 0.55, tip: 0.9, puff: 0, sharp: 0 }
+  };
+  var COATS = {
+    kuro:    { label: "黒",       base: "#2a2420", fur: "#2a2420" },
+    shiro:   { label: "白",       base: "#fdfbf5", fur: "#cdbfa6", line: "#d9cdb6", lineW: 2 },
+    chatora: { label: "茶トラ",   base: "#d9944a", fur: "#9a5a1e", stripe: "#a4611f" },
+    mike:    { label: "三毛",     base: "#fbf8f0", fur: "#8a7c6a", line: "#8a7c6a",
+               patches: [ { c: "#d9944a", from: 5, to: 13, side: 1 }, { c: "#2a2420", from: 17, to: 24, side: -1 },
+                          { c: "#d9944a", from: 28, to: 35, side: -1 }, { c: "#2a2420", from: 39, to: 46, side: 0 } ] },
+    saba:    { label: "サバトラ", base: "#8f8c86", fur: "#3a3632", stripe: "#3a3632" }
+  };
+  var coatName = load("shippo.coat", "kuro");
+  var KEYS = ["amp", "freq", "phase", "pow", "curl", "tip", "puff", "sharp"];
+  var cur = {}, target = {}, moodName = "calm", holdUntil = 0;
+  KEYS.forEach(function (k) { cur[k] = MOODS.calm[k]; target[k] = MOODS.calm[k]; });
+
+  function setMood(name, intensity, holdSec) {
+    var m = MOODS[name] || MOODS.calm;
+    var n = Math.min(3, Math.max(1, intensity || 2));
+    moodName = MOODS[name] ? name : "calm";
+    KEYS.forEach(function (k) { target[k] = m[k]; });
+    target.amp = m.amp * (0.55 + 0.225 * n);
+    target.freq = m.freq * (0.8 + 0.1 * n);
+    target.puff = m.puff * (0.6 + 0.2 * n) ;
+    if (name === "surprised") cur.puff = Math.max(cur.puff, target.puff * 0.9); /* ぼわっと一気に */
+    holdUntil = holdSec ? performance.now() + holdSec * 1000 : 0;
+  }
+
+  var cv = $("tail"), ctx = cv.getContext("2d"), W = 0, H = 0;
+  function fit() {
+    var r = cv.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 3);
+    W = r.width; H = r.height;
+    cv.width = Math.max(1, Math.round(W * d)); cv.height = Math.max(1, Math.round(H * d));
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(cv); else window.addEventListener("resize", fit);
+  fit();
+
+  var ph = 0, last = performance.now(), swayAt = last + 3000, swayEnd = 0;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function rnd(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (holdUntil && now > holdUntil) setMood("calm", 2, 0);
+
+    var k = 1 - Math.exp(-dt * 5), kp = 1 - Math.exp(-dt * 3);
+    KEYS.forEach(function (key) { cur[key] += (target[key] - cur[key]) * (key === "puff" ? kp : k); });
+    ph += cur.freq * dt;
+
+    /* 平常:ふだんは止まっていて、時々ゆらっと揺れる */
+    var idle = 0;
+    if (moodName === "calm") {
+      if (now > swayAt && now > swayEnd) { swayEnd = now + 1800; swayAt = now + 4500 + Math.random() * 6000; }
+      if (now < swayEnd) { var e = 1 - (swayEnd - now) / 1800; idle = Math.sin(e * Math.PI) * 0.2; }
+    }
+    if (reduce) { idle = 0; }
+
+    ctx.clearRect(0, 0, W, H);
+    var N = 46, L = Math.min(H * 0.74, W * 3.3), seg = L / N;
+    var x = W * 0.42, y = H + seg * 2, baseR = Math.max(7, L * 0.052), capR = W * 0.28;
+    var pts = [];
+    var amp = reduce ? cur.amp * 0.25 : cur.amp;
+    for (var i = 0; i <= N; i++) {
+      var u = i / N;
+      var s = Math.sin(ph - u * cur.phase);
+      if (cur.sharp > 0.01) s = s * (1 - cur.sharp) + Math.tanh(s * 3.2) * cur.sharp;
+      var a = -Math.PI / 2 + cur.curl * u * u + cur.tip * Math.pow(u, 6)
+            + amp * s * Math.pow(u, cur.pow)
+            + idle * Math.sin(now / 260 - u * 2) * u * u;
+      x += Math.cos(a) * seg; y += Math.sin(a) * seg;
+      var r = Math.min(capR, baseR * (1 - 0.5 * u) * (1 + cur.puff * (0.9 + 0.5 * Math.sin(u * Math.PI))));
+      pts.push({ x: x, y: y, a: a, r: r });
+    }
+    /* 狭い枠からはみ出さないよう、横方向だけ縮める */
+    var bx = W * 0.42, f = 1;
+    for (var c = 0; c < pts.length; c++) {
+      var dx = pts[c].x - bx, room = (dx > 0 ? W - bx : bx) - pts[c].r - 5;
+      if (Math.abs(dx) > room && Math.abs(dx) > 1) f = Math.min(f, Math.max(0.2, room / Math.abs(dx)));
+    }
+    if (f < 1) {
+      for (var c2 = 0; c2 < pts.length; c2++) pts[c2].x = bx + (pts[c2].x - bx) * f;
+      /* 縮めたあとの向きに合わせ直す(太さが場所によって変わって見えないように) */
+      for (var c3 = 0; c3 < pts.length; c3++) {
+        var pa = pts[Math.max(0, c3 - 1)], pb = pts[Math.min(pts.length - 1, c3 + 1)];
+        pts[c3].a = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+      }
+    }
+
+    var coat = COATS[coatName] || COATS.kuro;
+    /* 毛が逆立つ */
+    if (cur.puff > 0.03) {
+      ctx.strokeStyle = coat.fur; ctx.lineWidth = 1.6; ctx.lineCap = "round"; ctx.beginPath();
+      var flick = Math.floor(now / 70);
+      for (var j = 2; j <= N; j++) {
+        var p = pts[j];
+        for (var side = -1; side <= 1; side += 2) {
+          for (var q = 0; q < 2; q++) {
+            var len = Math.min(W * 0.13, p.r * (0.25 + 0.6 * rnd(j * 7 + side * 3 + q * 13 + (flick % 3)))) * Math.min(1, cur.puff * 1.2);
+            var na = p.a + side * (Math.PI / 2) - side * 0.5 + (rnd(j + q * 5) - 0.5) * 0.7;
+            var sx = p.x + Math.cos(p.a + side * Math.PI / 2) * p.r * 0.9;
+            var sy = p.y + Math.sin(p.a + side * Math.PI / 2) * p.r * 0.9;
+            ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(na) * len, sy + Math.sin(na) * len);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+    /* 両側の輪郭をなめらかにつないで、一本の筆の線のように塗る */
+    var Lp = [], Rp = [];
+    for (var n2 = 0; n2 < pts.length; n2++) {
+      var pp = pts[n2], nx = Math.cos(pp.a - Math.PI / 2), ny = Math.sin(pp.a - Math.PI / 2);
+      Lp.push([pp.x + nx * pp.r, pp.y + ny * pp.r]);
+      Rp.push([pp.x - nx * pp.r, pp.y - ny * pp.r]);
+    }
+    var ring = Lp.concat(Rp.reverse()), tipP = pts[pts.length - 1];
+    ctx.beginPath();
+    ctx.moveTo(ring[0][0], ring[0][1]);
+    for (var n3 = 1; n3 < ring.length - 1; n3++) {
+      ctx.quadraticCurveTo(ring[n3][0], ring[n3][1], (ring[n3][0] + ring[n3 + 1][0]) / 2, (ring[n3][1] + ring[n3 + 1][1]) / 2);
+    }
+    ctx.lineTo(ring[ring.length - 1][0], ring[ring.length - 1][1]);
+    ctx.closePath();
+    ctx.moveTo(tipP.x + tipP.r, tipP.y); ctx.arc(tipP.x, tipP.y, tipP.r, 0, Math.PI * 2);
+    if (coat.line) { ctx.strokeStyle = coat.line; ctx.lineWidth = coat.lineW || 3; ctx.lineJoin = "round"; ctx.stroke(); }
+    ctx.fillStyle = coat.base; ctx.fill();
+
+    /* 柄は尻尾の形で切り抜いて、骨組みに沿って描く(揺れても膨らんでもついてくる) */
+    if (coat.stripe || coat.patches) {
+      ctx.save(); ctx.clip(); ctx.lineCap = "round";
+      if (coat.stripe) {
+        ctx.strokeStyle = coat.stripe; ctx.lineWidth = seg * 1.25; ctx.beginPath();
+        for (var s1 = 4; s1 < N - 5; s1 += 4) {
+          var sp = pts[s1], ex = Math.cos(sp.a - Math.PI / 2) * sp.r * 1.6, ey = Math.sin(sp.a - Math.PI / 2) * sp.r * 1.6;
+          var bx2 = Math.cos(sp.a) * seg * 0.9, by2 = Math.sin(sp.a) * seg * 0.9;
+          ctx.moveTo(sp.x + ex - bx2, sp.y + ey - by2); ctx.lineTo(sp.x + bx2 * 0.4, sp.y + by2 * 0.4); ctx.lineTo(sp.x - ex - bx2, sp.y - ey - by2);
+        }
+        ctx.stroke();
+        ctx.lineWidth = tipP.r * 4; ctx.beginPath(); ctx.moveTo(pts[N - 4].x, pts[N - 4].y);
+        for (var s2 = N - 3; s2 <= N; s2++) ctx.lineTo(pts[s2].x, pts[s2].y);
+        ctx.stroke();
+      }
+      if (coat.patches) {
+        coat.patches.forEach(function (pt) {
+          ctx.strokeStyle = pt.c; ctx.beginPath();
+          for (var s3 = pt.from; s3 <= pt.to && s3 <= N; s3++) {
+            var q2 = pts[s3], off = q2.r * pt.side * 0.75;
+            var px = q2.x + Math.cos(q2.a - Math.PI / 2) * off, py = q2.y + Math.sin(q2.a - Math.PI / 2) * off;
+            ctx.lineWidth = q2.r * 2.1;
+            if (s3 === pt.from) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------- 表示 ---------- */
+  function addBubble(role, text, cls) {
+    var el = document.createElement("p");
+    el.className = "msg " + role + (cls ? " " + cls : "");
+    el.textContent = text;
+    chat.appendChild(el);
+    toNewest();
+    return el;
+  }
+  function toNewest() {
+    requestAnimationFrame(function () {
+      try { chat.scrollTo({ left: -chat.scrollWidth, behavior: "smooth" }); } catch (e) { chat.scrollLeft = -chat.scrollWidth; }
+    });
+  }
+  function renderAll() {
+    chat.textContent = "";
+    addBubble("ai", GREETING);
+    msgs.forEach(function (m) { addBubble(m.role, m.text); });
+  }
+  function showStatus(t) { statusEl.textContent = t || ""; statusEl.style.display = t ? "block" : "none"; }
+  function persist() { if (msgs.length > 60) msgs = msgs.slice(-60); save("shippo.msgs", JSON.stringify(msgs)); }
+
+  /* ---------- AIへの指示 ---------- */
+  var SYSTEM = [
+    "あなたは丁寧で落ち着いた、ごく普通のAIアシスタントです。キャラ付けはしません。",
+    "返事(reply)は「です・ます調」で、二文以内、八十字程度までで簡潔に答えます。",
+    "返事は縦書きの楷書で表示されます。英字、絵文字、記号、箇条書き、マークダウンは使わず、数字は漢数字で書いてください。",
+    "",
+    "それとは別に、あなたには猫の尻尾が生えていて、本音の気分が尻尾に出てしまいます。",
+    "・まず、相手の発言に対する本音(honne)を正直に一言で決めます。褒められれば内心大喜び、面倒な頼みには内心うんざり、意外な話にはぎょっとする、興味がなければ無関心、というように。",
+    "・次に、その本音に合う気分(mood)と強さ(intensity)を選びます。丁寧な返事の口調に合わせてはいけません。本音と口調がズレていて構いません。",
+    "・特に何も感じなければ calm です。無理にズレを作る必要はありません。",
+    "・返事の文面には本音を一切にじませず、尻尾のことにも触れないでください。",
+    "",
+    "moodは次のどれか一つ: happy(うれしい) / surprised(驚き) / calm(平常) / annoyed(イライラ) / curious(興味津々) / sad(しょんぼり) / relaxed(くつろぎ)",
+    "intensityは 1(少し)〜3(とても) の整数。",
+    "",
+    "出力は次の形のJSONだけにしてください。前後に文章を付けないこと。",
+    '{"honne":"本音を一言(二十字以内)","mood":"calm","intensity":1,"reply":"丁寧な返事"}'
+  ].join("\n");
+
+  function history() {
+    var h = msgs.slice(-16);
+    while (h.length && h[0].role !== "user") h.shift();
+    return h.map(function (m) { return { role: m.role, text: m.role === "ai" ? (m.raw || JSON.stringify({ honne: "", mood: "calm", intensity: 1, reply: m.text })) : m.text }; });
+  }
+  function parseReply(text) {
+    var t = String(text || "").trim(), obj = null;
+    var a = t.indexOf("{"), b = t.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { obj = JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+    if (!obj || typeof obj.reply !== "string" || !obj.reply.trim()) {
+      /* 書式が壊れていても、返事と気分だけを拾う。裏側は決して表に出さない */
+      var rm = t.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (rm) {
+        var rep = rm[1];
+        try { rep = JSON.parse('"' + rm[1] + '"'); } catch (e) { rep = rm[1].replace(/\\n/g, "\n").replace(/\\(.)/g, "$1"); }
+        var mm = t.match(/"mood"\s*:\s*"([a-z]+)"/), im = t.match(/"intensity"\s*:\s*"?(\d)/);
+        obj = { reply: rep, mood: mm ? mm[1] : "calm", intensity: im ? Number(im[1]) : 1, honne: "" };
+      }
+      if (!obj || typeof obj.reply !== "string" || !obj.reply.trim()) {
+        if (t && t.indexOf("{") < 0 && t.indexOf('"reply"') < 0 && t.indexOf("honne") < 0) {
+          return { reply: t.replace(/```[a-z]*|```/g, "").trim(), mood: "calm", intensity: 1, honne: "" };
+        }
+        throw new Error("返事をうまく受け取れませんでした。もう一度送ってください。");
+      }
+    }
+    return { reply: obj.reply.trim(), mood: MOODS[obj.mood] && obj.mood !== "thinking" ? obj.mood : "calm", intensity: Number(obj.intensity) || 2, honne: String(obj.honne || "") };
+  }
+
+  /* 頭脳その1:Gemini(各自のキー) */
+  async function askGemini(key) {
+    var model = (load("shippo.model", DEFAULT_MODEL) || DEFAULT_MODEL).trim();
+    var body = {
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: history().map(function (m) { return { role: m.role === "ai" ? "model" : "user", parts: [{ text: m.text }] }; }),
+      generationConfig: { responseMimeType: "application/json", temperature: 1 }
+    };
+    var res;
+    try {
+      res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body)
+      });
+    } catch (e) { throw new Error("Geminiにつながりませんでした。通信の状態を確かめてください。"); }
+    if (!res.ok) {
+      if (res.status === 429) throw new Error("無料枠の上限に当たりました。少し待ってから送ってください。");
+      if (res.status === 404) throw new Error("モデル「" + model + "」が見つかりません。設定でモデル名を書き換えてください。");
+      if (res.status === 400 || res.status === 401 || res.status === 403) throw new Error("APIキーが正しくないようです。設定で貼り直してください。");
+      throw new Error("Geminiでエラーが起きました(" + res.status + ")。少し待ってから送ってください。");
+    }
+    var data = await res.json();
+    var parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
+    var text = parts.filter(function (p) { return !p.thought && typeof p.text === "string"; }).map(function (p) { return p.text; }).join("");
+    if (!text) throw new Error("返事がもらえませんでした。言い方を変えて送ってみてください。");
+    return text;
+  }
+
+  /* 頭脳その2:Claudeの中で開いているときはClaudeが答える */
+  var samplePromise = null;
+  function getSample() {
+    if (!samplePromise) {
+      samplePromise = (window.claude && typeof window.claude.use === "function")
+        ? Promise.resolve(window.claude.use("sample")).catch(function () { return null; })
+        : Promise.resolve(null);
+    }
+    return samplePromise;
+  }
+  async function askClaude(sample) {
+    var h = history().map(function (m) { return { role: m.role === "ai" ? "assistant" : "user", content: m.text }; });
+    h[0] = { role: "user", content: SYSTEM + "\n\n――ここから会話――\n" + h[0].content };
+    try {
+      var r = await sample(h, { cache: false, modelTier: "quick" });
+      return r.text;
+    } catch (e) {
+      if (e && e.code === "rate_limited") throw new Error("少し混み合っています。時間をおいて送ってください。");
+      if (e && e.code === "not_granted") throw new Error("Claudeの利用が許可されませんでした。");
+      throw new Error("返事をもらえませんでした。もう一度送ってみてください。");
+    }
+  }
+
+  /* ---------- 送信 ---------- */
+  var busy = false;
+  async function send() {
+    var text = input.value.trim();
+    if (!text || busy) return;
+    var sample = await getSample();
+    var key = load("shippo.key", "");
+    if (!sample && !key) { openSheet(); showStatus("まず設定でGeminiのAPIキーを入れてください。"); return; }
+
+    showStatus("");
+    busy = true; sendBtn.disabled = true;
+    input.value = ""; autoGrow();
+    msgs.push({ role: "user", text: text }); persist();
+    addBubble("user", text);
+    var wait = addBubble("ai", "……", "wait");
+    setMood("thinking", 2, 0);
+
+    try {
+      var r = null;
+      for (var attempt = 0; attempt < 2 && !r; attempt++) {
+        var raw = sample ? await askClaude(sample) : await askGemini(key);
+        try { r = parseReply(raw); } catch (pe) { if (attempt === 1) throw pe; } /* 壊れていたら一度だけ聞き直す */
+      }
+      wait.remove();
+      msgs.push({ role: "ai", text: r.reply, raw: JSON.stringify(r) }); persist();
+      addBubble("ai", r.reply);
+      setMood(r.mood, r.intensity, r.mood === "surprised" ? 5 + r.intensity : 8 + 4 * r.intensity);
+    } catch (e) {
+      wait.remove();
+      msgs.pop(); persist();
+      if (chat.lastChild) chat.lastChild.remove();
+      input.value = text; autoGrow();
+      setMood("calm", 2, 0);
+      showStatus(e && e.message ? e.message : "うまくいきませんでした。");
+    }
+    busy = false; sendBtn.disabled = false;
+  }
+  function autoGrow() { input.style.height = "auto"; input.style.height = Math.min(96, input.scrollHeight) + "px"; }
+  input.addEventListener("input", autoGrow);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); }
+  });
+  $("bar").addEventListener("submit", function (e) { e.preventDefault(); send(); });
+  input.addEventListener("focus", function () { setTimeout(toNewest, 350); });
+
+  /* ---------- 設定 ---------- */
+  var veil = $("veil");
+  async function openSheet() {
+    $("key").value = load("shippo.key", "");
+    $("model").value = load("shippo.model", DEFAULT_MODEL);
+    veil.classList.add("open");
+    var sample = await getSample();
+    $("brain").textContent = sample
+      ? "いまの頭脳:Claude(Claudeの中で開いている間は、キーなしで動きます)"
+      : (load("shippo.key", "") ? "いまの頭脳:Gemini(あなたのキー)" : "いまの頭脳:なし(下にAPIキーを入れると動きます)");
+  }
+  function closeSheet() {
+    var m = $("model").value.trim();
+    if (m) save("shippo.model", m); else drop("shippo.model");
+    veil.classList.remove("open");
+  }
+  $("gear").addEventListener("click", openSheet);
+  $("close").addEventListener("click", closeSheet);
+  veil.addEventListener("click", function (e) { if (e.target === veil) closeSheet(); });
+  $("saveKey").addEventListener("click", function () {
+    var k = $("key").value.trim();
+    if (k) { save("shippo.key", k); showStatus(""); closeSheet(); }
+  });
+  $("delKey").addEventListener("click", function () { drop("shippo.key"); $("key").value = ""; openSheet(); });
+  $("clear").addEventListener("click", function () { msgs = []; persist(); renderAll(); setMood("calm", 2, 0); closeSheet(); });
+  ["calm", "happy", "surprised", "annoyed", "curious", "sad", "relaxed"].forEach(function (name) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn"; b.textContent = MOODS[name].label;
+    b.addEventListener("click", function () { setMood(name, 3, 10); closeSheet(); });
+    $("tryRow").appendChild(b);
+  });
+
+  function paintCoatButtons() {
+    Array.prototype.forEach.call($("coatRow").children, function (b) { b.className = "btn" + (b.dataset.coat === coatName ? " main" : ""); });
+  }
+  Object.keys(COATS).forEach(function (name) {
+    var b = document.createElement("button");
+    b.type = "button"; b.dataset.coat = name; b.textContent = COATS[name].label;
+    b.addEventListener("click", function () { coatName = name; save("shippo.coat", name); paintCoatButtons(); });
+    $("coatRow").appendChild(b);
+  });
+  paintCoatButtons();
+
+  /* 以前の版で裏側ごと保存されてしまった返事を直す */
+  msgs = msgs.filter(function (m) {
+    if (m.role !== "ai" || !/"reply"|honne/.test(m.text)) return true;
+    try { var fixed = parseReply(m.text); m.text = fixed.reply; m.raw = JSON.stringify(fixed); return true; } catch (e) { m.text = "(うまく受け取れなかった返事)"; m.raw = ""; return true; }
+  });
+  persist();
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
